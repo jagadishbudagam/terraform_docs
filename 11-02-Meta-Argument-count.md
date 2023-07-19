@@ -1,132 +1,113 @@
 ---
-title: Provision Azure Linux VM using Terraform
-description: Learn to Provision Azure Linux VM using Terraform
+title: Terraform Resource Meta-Argument count
+description: Learn Terraform Resource Meta-Argument count
 ---
 
 ## Step-01: Introduction
-- We will create the below Azure Resources using Terraform
-1. Azure Resource Group
-2. Azure Virtual Network
-3. Azure Subnet
-4. Azure Public IP
-5. Azure Network Interface
-6. [Azure Linux Virtual Machine](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine)
-7. `random_string` Resource
-- We will use Azure `custom_data` argument in `azurerm_linux_virtual_machine` to install a simple webserver during the creation of VM.
-- [Terraform file Function](https://www.terraform.io/docs/language/functions/file.html)
-- [Terraform filebase64 Function](https://www.terraform.io/docs/language/functions/filebase64.html)
+- [Resources: Count Meta-Argument](https://www.terraform.io/docs/language/meta-arguments/count.html)
+- Understand Resource Meta-Argument `count`
+- Also implement count and count index practically 
+- In general, 1 Azure VM Instance Resource in Terraform equals to 1 VM Instance in Real Azure Cloud
+- 5 Azure VM Instance Resources = 5 Azure VM Instances in Azure Cloud
+- With `Meta-Argument count` this is going to become super simple. 
+- Lets see how. 
+- Learn about [Terraform element Function](https://www.terraform.io/docs/language/functions/element.html)
+- Learn about [Terarform Splat Expression](https://www.terraform.io/docs/language/expressions/splat.html)
+- Learn about [Terraform Length Function](https://www.terraform.io/docs/language/functions/length.html)
+- Learn about [Terraform Console](https://www.terraform.io/docs/cli/commands/console.html)
 
-## Step-02: Create SSH Keys for Azure Linux VM
-```t
-# Create Folder
-cd terraform-manifests/
-mkdir ssh-keys
 
-# Create SSH Key
-cd ssh-ekys
-ssh-keygen \
-    -m PEM \
-    -t rsa \
-    -b 4096 \
-    -C "azureuser@myserver" \
-    -f terraform-azure.pem 
-Important Note: If you give passphrase during generation, during everytime you login to VM, you also need to provide passphrase.
-
-# List Files
-ls -lrt ssh-keys/
-
-# Files Generated after above command 
-Public Key: terraform-azure.pem.pub -> Rename as terraform-azure.pub
-Private Key: terraform-azure.pem
-
-# Permissions for Pem file
-chmod 400 terraform-azure.pem
-```  
-
-## Step-03: c1-versions.tf - Create Terraform & Provider Blocks 
-- Create Terraform Block
-- Create Provider Block
-- Create Random Resource Block
-```t
-# Terraform Block
-terraform {
-  required_version = ">= 1.0.0"
-  required_providers {
-    azurerm = {
-      source = "hashicorp/azurerm"
-      version = ">= 2.0" 
-    }
-    random = {
-      source = "hashicorp/random"
-      version = ">= 3.0"
-    }
-  }
-}
-
-# Provider Block
-provider "azurerm" {
- features {}          
-}
-
-# Random String Resource
-resource "random_string" "myrandom" {
-  length = 6
-  upper = false 
-  special = false
-  number = false   
-}
-```
-## Step-04: c2-resource-group.tf
+## Step-02: Simple Example - Review terraform-manifests-v1
+- Folder Path: terraform-manifests-v1
+- c1-versions.tf
+- c2-resource-group.tf
 ```t
 # Resource-1: Azure Resource Group
 resource "azurerm_resource_group" "myrg" {
-  name = "myrg-1"
+  name = "myrg-${count.index}"
   location = "East US"
+  count = 3
 }
 ```
 
-## Step-05: c3-vritual-network.tf - Virtual Network Resource
+## Step-03: Execute Terraform Commands
 ```t
-# Create Virtual Network
-resource "azurerm_virtual_network" "myvnet" {
-  name                = "myvnet-1"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.myrg.location
-  resource_group_name = azurerm_resource_group.myrg.name
-}
+# Change Directory
+cd terraform-manifests-v1
+
+# Terraform Initialize
+terraform init
+
+# Terraform Validate
+terraform validate
+
+# Terraform Plan 
+terraform plan
+
+# Terraform Apply 
+terraform apply 
+
+# Terraform Destroy
+terraform destroy -auto-approve
+
+# Verify
+1. We should see 3 Resource groups created.
+2. Verify the count.index number for each resource group
 ```
 
-## Step-06: c3-vritual-network.tf  - Azure Subnet Resource
-```t
-# Create Subnet
-resource "azurerm_subnet" "mysubnet" {
-  name                 = "mysubnet-1"
-  resource_group_name  = azurerm_resource_group.myrg.name
-  virtual_network_name = azurerm_virtual_network.myvnet.name
-  address_prefixes     = ["10.0.2.0/24"]
-}
-```
-## Step-07: c3-vritual-network.tf  - Azure Public IP Resource
-```t
+## Step-04: Review Terraform Configs V2
+- **Usecase:** Create two Azure Linux VMs using Meta-Argument `count`
+1. We need two Public IPs for two VMs
+2. We need two Network Interfaces two VMs
+- We are going to learn the following concepts over the process
+- Learn about [Terraform Console](https://www.terraform.io/docs/cli/commands/console.html)
+- Learn about [Terraform Length Function](https://www.terraform.io/docs/language/functions/length.html)
+- Learn about [Terraform element Function](https://www.terraform.io/docs/language/functions/element.html)
+- Learn about [Terarform Splat Expression](https://www.terraform.io/docs/language/expressions/splat.html)
 
-# Create Public IP Address
+- **Folder Path:** terraform-manifests-v2
+- c1-versions.tf: No changes
+- c2-resource-group.tf: No changes
+- c3-virtual-network.tf: Has changes for Network Interface
+- c4-linux-virtual-machine.tf: Has changes
+
+## Step-05: terraform-manifests-v2 - c3-virtual-network.tf
+- For Public IP resource add `count=2`
+```t
+# Create Azure Public IP Address
 resource "azurerm_public_ip" "mypublicip" {
-  name                = "mypublicip-1"
+  count = 2
+  name                = "mypublicip-${count.index}"
   resource_group_name = azurerm_resource_group.myrg.name
   location            = azurerm_resource_group.myrg.location
   allocation_method   = "Static"
-  domain_name_label = "app1-vm-${random_string.myrandom.id}"
-  tags = {
-    environment = "Dev"
-  }
+  domain_name_label = "app1-vm-${count.index}-${random_string.myrandom.id}"  
 }
-``` 
-## Step-08: c3-vritual-network.tf  - Network Interface Resource
-```t
+```
 
+## Step-06: Understand about Splat Expression
+- [Terarform Splat Expression](https://www.terraform.io/docs/language/expressions/splat.html)
+- [Terraform element Function](https://www.terraform.io/docs/language/functions/element.html)
+```t
+# Terraform console
+terraform console
+element(["kalyan", "reddy", "daida"], 0)
+element(["kalyan", "reddy", "daida"], 1)
+element(["kalyan", "reddy", "daida"], 2)
+
+# To get last element from list
+length(["kalyan", "reddy", "daida"])
+element(["kalyan", "reddy", "daida"], length(["kalyan", "reddy", "daida"])-1)
+```
+
+## Step-07: terraform-manifests-v2 - c3-virtual-network.tf
+- For Network Interface resource add `count=2`
+- Associate Public IP using `Element Function` and `Splat Expression`
+```t
 # Create Network Interface
 resource "azurerm_network_interface" "myvmnic" {
-  name                = "vmnic"
+  count = 2
+  name                = "vmnic-${count.index}"
   location            = azurerm_resource_group.myrg.location
   resource_group_name = azurerm_resource_group.myrg.name
 
@@ -134,32 +115,34 @@ resource "azurerm_network_interface" "myvmnic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.mysubnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id = azurerm_public_ip.mypublicip.id 
+    public_ip_address_id = element(azurerm_public_ip.mypublicip[*].id, count.index)
   }
 }
 ```
 
-## Step-09: c4-linux-virtual-machine.tf
+## Step-08: c4-linux-virtual-machine.tf 
+- For Linux Virtual machine resource add `count=2`
+- Associate Network interface to VM using `Element Function` and `Splat Expression`
 ```t
 # Resource: Azure Linux Virtual Machine
 resource "azurerm_linux_virtual_machine" "mylinuxvm" {
-  name                = "mylinuxvm-1"
-  computer_name       = "devlinux-vm1" # Hostname of the VM
+  count = 2
+  name                = "mylinuxvm-${count.index}"
+  computer_name       = "devlinux-${count.index}" # Hostname of the VM
   resource_group_name = azurerm_resource_group.myrg.name
   location            = azurerm_resource_group.myrg.location
   size                = "Standard_DS1_v2"
   admin_username      = "azureuser"
-  network_interface_ids = [
-    azurerm_network_interface.myvmnic.id
-  ]
+  network_interface_ids = [element(azurerm_network_interface.myvmnic[*].id, count.index)]
   admin_ssh_key {
     username   = "azureuser"
     public_key = file("${path.module}/ssh-keys/terraform-azure.pub")
   }
   os_disk {
-    name = "osdisk"
+    name = "osdisk${count.index}"
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
+    #disk_size_gb = 20
   }
   source_image_reference {
     publisher = "RedHat"
@@ -171,32 +154,13 @@ resource "azurerm_linux_virtual_machine" "mylinuxvm" {
 }
 ```
 
-## Step-10: app1-cloud-init.txt
-```t
-#cloud-config
-package_upgrade: false
-packages:
-  - httpd
-write_files:
-  - owner: root:root 
-    path: /var/www/html/index.html
-    content: |
-      <h1>Welcome to StackSimplify - APP-1</h1>
-  - owner: root:root 
-    path: /var/www/html/app1/index.html
-    content: |
-      <!DOCTYPE html> <html> <body style="background-color:rgb(250, 210, 210);"> <h1>Welcome to Stack Simplify - APP-1</h1> <p>Terraform Demo</p> <p>Application Version: V1</p> </body></html>      
-runcmd:
-  - sudo systemctl start httpd  
-  - sudo systemctl enable httpd
-  - sudo systemctl stop firewalld
-  - sudo mkdir /var/www/html/app1 
-  - [sudo, curl, -H, "Metadata:true", --noproxy, "*", "http://169.254.169.254/metadata/instance?api-version=2020-09-01", -o, /var/www/html/app1/metadata.html]
-```
 
-## Step-11: Execute Terraform commands to Create Resources using Terraform
+## Step-09: Execute Terraform Commands
 ```t
-# Initialize Terraform
+# Change Directory
+cd terraform-manifests-v2
+
+# Terraform Initialize
 terraform init
 
 # Terraform Validate
@@ -207,28 +171,21 @@ terraform plan
 
 # Terraform Apply 
 terraform apply 
-```
 
-## Step-12: Verify the Resources
-- Verify Resources
+# Verify
 1. Azure Resource Group
 2. Azure Virtual Network
 3. Azure Subnet
-4. Azure Public IP
-5. Azure Network Interface
-6. Azure Virtual Machine
-```t
-# Connect to VM and Verify 
-ssh -i ssh-keys/terraform-azure.pem azureuser@<PUBLIC-IP>
+4. Azure Public IP - 2 Resources created as specified in count
+5. Azure Network Interface - 2 Resources created as specified in count
+6. Azure Linux Virtual Machine - - 2 Resources created as specified in count
 
 # Access Application
-http://<PUBLIC_IP>
-http://<PUBLIC_IP>/app1
-http://<PUBLIC_IP>/app1/metadata.html
+http://<PUBLIC_IP-1>
+http://<PUBLIC_IP-2>
 ```
 
-
-## Step-13: Destroy Terraform Resources
+## Step-10: Destroy Terraform Resources
 ```t
 # Destroy Terraform Resources
 terraform destroy
@@ -238,10 +195,5 @@ rm -rf .terraform*
 rm -rf terraform.tfstate*
 ```
 
-## References 
-1. [Azure Resource Group](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group)
-2. [Azure Virtual Network](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_network)
-3. [Azure Subnet](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet)
-4. [Azure Public IP](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/public_ip)
-5. [Azure Network Interface](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface)
-6. [Azure Virtual Machine](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine)
+## References
+- [Resources: Count Meta-Argument](https://www.terraform.io/docs/language/meta-arguments/count.html)
